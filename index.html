@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hand FX</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#000;overflow:hidden;font-family:monospace}
+  #V{position:absolute;top:0;left:0;width:100vw;height:100vh;object-fit:cover;transform:scaleX(-1);opacity:0.5}
+  #C{position:absolute;top:0;left:0;z-index:2}
+  #start-btn{position:absolute;bottom:40px;left:50%;transform:translateX(-50%);background:rgba(0,255,200,0.15);border:1px solid rgba(0,255,200,0.6);color:#0fc;font-family:monospace;font-size:13px;padding:14px 30px;cursor:pointer;z-index:10;letter-spacing:3px}
+  #start-btn:disabled{opacity:0.4;cursor:default}
+  #ctrls{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);display:none;flex-wrap:wrap;justify-content:center;gap:8px;z-index:10;max-width:95vw}
+  .cb{background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.25);color:rgba(255,255,255,0.5);font-family:monospace;font-size:10px;padding:7px 12px;cursor:pointer;letter-spacing:1px;border-radius:4px;transition:all .2s}
+  .cb.on{border-color:#0fc;color:#0fc;background:rgba(0,255,200,0.1)}
+</style>
+</head>
+<body>
+<video id="V" playsinline autoplay muted></video>
+<canvas id="C"></canvas>
+<button id="start-btn" disabled>LOADING MODEL...</button>
+<div id="ctrls">
+  <button class="cb on" onclick="setMode('web',this)">WEB</button>
+  <button class="cb" onclick="setMode('pulse',this)">PULSE</button>
+  <button class="cb" onclick="setMode('cyber',this)">CYBER</button>
+  <button class="cb" onclick="setMode('orb',this)">ORB</button>
+  <button class="cb" onclick="setMode('fire',this)">FIRE</button>
+  <button class="cb" onclick="setMode('repulsor',this)">REPULSOR</button>
+  <button class="cb" onclick="setMode('portal',this)">PORTAL</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.1.0/dist/handpose.min.js"></script>
+<script>
+var V=document.getElementById('V');
+var C=document.getElementById('C');
+var X=C.getContext('2d');
+var mode='web', mdl=null, t=0, lastHands=[];
+
+// Particle system
+var particles=[];
+var MAX_P=400;
+
+function addP(x,y,vx,vy,life,r,g,b,size){
+  if(particles.length>MAX_P) particles.splice(0,particles.length-MAX_P);
+  particles.push({x:x,y:y,vx:vx,vy:vy,life:life,maxLife:life,r:r,g:g,b:b,size:size||3});
+}
+
+function tickParticles(){
+  for(var i=particles.length-1;i>=0;i--){
+    var p=particles[i];
+    p.x+=p.vx; p.y+=p.vy;
+    p.life--;
+    if(p.life<=0) particles.splice(i,1);
+  }
+}
+
+function drawParticles(){
+  particles.forEach(function(p){
+    var a=(p.life/p.maxLife);
+    X.beginPath();
+    X.arc(p.x,p.y,p.size*a,0,Math.PI*2);
+    X.fillStyle='rgba('+p.r+','+p.g+','+p.b+','+a.toFixed(2)+')';
+    X.fill();
+  });
+}
+
+function setMode(m,el){
+  mode=m; particles=[];
+  document.querySelectorAll('.cb').forEach(function(b){b.classList.remove('on')});
+  el.classList.add('on');
+}
+
+// Palm center from landmarks
+function palmCenter(lm,pt){
+  var ids=[0,5,9,13,17];
+  var cx=0,cy=0;
+  ids.forEach(function(i){var p=pt(lm,i);cx+=p.x;cy+=p.y});
+  return{x:cx/5, y:cy/5};
+}
+
+// LOAD
+(async function(){
+  try{
+    await tf.setBackend('webgl'); await tf.ready();
+    mdl=await handpose.load();
+    var b=document.getElementById('start-btn');
+    b.textContent='START'; b.disabled=false; b.onclick=startCam;
+  }catch(e){console.error(e)}
+})();
+
+async function startCam(){
+  try{
+    var stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:'user',width:{ideal:640},height:{ideal:480}}
+    });
+    V.srcObject=stream; V.play();
+    V.onloadeddata=function(){
+      C.width=window.innerWidth; C.height=window.innerHeight;
+      document.getElementById('start-btn').style.display='none';
+      document.getElementById('ctrls').style.display='flex';
+      requestAnimationFrame(draw);
+      detectLoop();
+    };
+  }catch(e){console.error(e)}
+}
+
+async function detectLoop(){
+  try{lastHands=await mdl.estimateHands(V)}catch(e){}
+  setTimeout(detectLoop,50);
+}
+
+function draw(){
+  requestAnimationFrame(draw);
+  t+=0.02;
+  var W=window.innerWidth, H=window.innerHeight;
+  if(C.width!==W)C.width=W;
+  if(C.height!==H)C.height=H;
+  X.clearRect(0,0,W,H);
+
+  tickParticles();
+
+  var hands=lastHands;
+  var vw=V.videoWidth||1, vh=V.videoHeight||1;
+
+  function pt(lm,i){
+    return{x:W-(lm[i][0]/vw*W), y:lm[i][1]/vh*H};
+  }
+
+  if(!hands||!hands.length){
+    drawParticles();
+    return;
+  }
+
+  var lm=hands[0].landmarks;
+
+  // Run current mode
+  switch(mode){
+    case 'web': fxWeb(lm,pt); break;
+    case 'pulse': fxPulse(lm,pt); break;
+    case 'cyber': fxCyber(lm,pt); break;
+    case 'orb': fxOrb(lm,pt); break;
+    case 'fire': fxFire(lm,pt); break;
+    case 'repulsor': fxRepulsor(lm,pt); break;
+    case 'portal': fxPortal(lm,pt); break;
+  }
+
+  drawParticles();
+}
+
+var TIPS=[4,8,12,16,20];
+var NODES=[0,4,5,8,9,12,13,16,17,20];
+
+// ======================== WEB ========================
+function fxWeb(lm,pt){
+  var ps=NODES.map(function(i){return pt(lm,i)});
+  for(var i=0;i<ps.length;i++) for(var j=i+1;j<ps.length;j++){
+    var d=Math.hypot(ps[i].x-ps[j].x,ps[i].y-ps[j].y);
+    if(d<300){
+      var a=(1-d/300)*0.95*(0.6+0.4*Math.sin(t*3+i+j));
+      X.beginPath();X.moveTo(ps[i].x,ps[i].y);X.lineTo(ps[j].x,ps[j].y);
+      X.strokeStyle='rgba(0,255,180,'+a.toFixed(2)+')';X.lineWidth=a*3;X.stroke();
+    }
+  }
+  TIPS.forEach(function(f,idx){
+    var p=pt(lm,f),r=10+5*Math.sin(t*4+idx);
+    X.beginPath();X.arc(p.x,p.y,r,0,Math.PI*2);X.fillStyle='rgba(0,255,220,1)';X.fill();
+    X.beginPath();X.arc(p.x,p.y,r+14,0,Math.PI*2);X.strokeStyle='rgba(0,255,200,0.4)';X.lineWidth=2;X.stroke();
+  });
+}
+
+// ======================== PULSE ========================
+function fxPulse(lm,pt){
+  var ps=NODES.map(function(i){return pt(lm,i)});
+  var b=(Math.sin(t*5)+1)/2;
+  for(var i=0;i<ps.length;i++) for(var j=i+1;j<ps.length;j++){
+    var d=Math.hypot(ps[i].x-ps[j].x,ps[i].y-ps[j].y);
+    if(d<260){
+      var a=(1-d/260)*0.9;
+      X.beginPath();X.moveTo(ps[i].x,ps[i].y);X.lineTo(ps[j].x,ps[j].y);
+      X.strokeStyle='rgba('+Math.round(255*b)+','+Math.round(80+170*(1-b))+',255,'+a.toFixed(2)+')';
+      X.lineWidth=a*3;X.stroke();
+    }
+  }
+  TIPS.forEach(function(f,idx){
+    var p=pt(lm,f),hue=Math.round((t*50+idx*72)%360),r2=12+8*b;
+    X.beginPath();X.arc(p.x,p.y,r2,0,Math.PI*2);
+    X.fillStyle='hsla('+hue+',100%,65%,1)';X.fill();
+  });
+}
+
+// ======================== CYBER ========================
+function fxCyber(lm,pt){
+  var SK=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
+  SK.forEach(function(s){
+    var a=pt(lm,s[0]),b=pt(lm,s[1]);
+    X.beginPath();X.moveTo(a.x,a.y);X.lineTo(b.x,b.y);
+    X.strokeStyle='rgba(160,80,255,0.7)';X.lineWidth=2;X.stroke();
+  });
+  TIPS.forEach(function(f,idx){
+    var p=pt(lm,f);
+    X.beginPath();X.arc(p.x,p.y,8,0,Math.PI*2);X.fillStyle='rgba(255,50,210,1)';X.fill();
+    var sz=20+4*Math.sin(t*5+idx);
+    X.beginPath();X.moveTo(p.x-sz,p.y);X.lineTo(p.x+sz,p.y);
+    X.moveTo(p.x,p.y-sz);X.lineTo(p.x,p.y+sz);
+    X.strokeStyle='rgba(255,50,210,0.8)';X.lineWidth=2;X.stroke();
+  });
+}
+
+// ======================== ENERGY ORB ========================
+function fxOrb(lm,pt){
+  var palm=palmCenter(lm,pt);
+  var mid=pt(lm,12);
+  // Orb floats above palm toward middle finger
+  var ox=palm.x*0.5+mid.x*0.5;
+  var oy=palm.y-60+10*Math.sin(t*2);
+  var orbR=28+8*Math.sin(t*3);
+
+  // Orbiting particles
+  for(var i=0;i<6;i++){
+    var angle=t*3+i*(Math.PI*2/6);
+    var orbitR=orbR+18;
+    var px=ox+Math.cos(angle)*orbitR;
+    var py=oy+Math.sin(angle)*orbitR*0.6;
+    addP(px,py,(Math.random()-0.5)*2,-Math.random()*2,15,100,200,255,2);
+  }
+
+  // Energy streams from fingertips to orb
+  TIPS.forEach(function(f){
+    var fp=pt(lm,f);
+    for(var s=0;s<5;s++){
+      var frac=s/5+((t*2)%0.2);
+      if(frac>1)frac-=1;
+      var ex=fp.x+(ox-fp.x)*frac;
+      var ey=fp.y+(oy-fp.y)*frac;
+      X.beginPath();X.arc(ex,ey,2,0,Math.PI*2);
+      X.fillStyle='rgba(100,200,255,'+(0.6*frac).toFixed(2)+')';X.fill();
+    }
+    X.beginPath();X.moveTo(fp.x,fp.y);X.lineTo(ox,oy);
+    X.strokeStyle='rgba(100,180,255,0.15)';X.lineWidth=1;X.stroke();
+  });
+
+  // Orb glow layers
+  for(var r=orbR+30;r>0;r-=6){
+    X.beginPath();X.arc(ox,oy,r,0,Math.PI*2);
+    X.fillStyle='rgba(80,180,255,'+(0.04*(1-r/(orbR+30))).toFixed(3)+')';X.fill();
+  }
+  // Core orb
+  X.beginPath();X.arc(ox,oy,orbR,0,Math.PI*2);
+  X.fillStyle='rgba(120,200,255,0.5)';X.fill();
+  X.beginPath();X.arc(ox,oy,orbR*0.6,0,Math.PI*2);
+  X.fillStyle='rgba(200,240,255,0.7)';X.fill();
+  X.beginPath();X.arc(ox,oy,orbR*0.25,0,Math.PI*2);
+  X.fillStyle='rgba(255,255,255,0.9)';X.fill();
+
+  // Fingertip dots
+  TIPS.forEach(function(f){
+    var p=pt(lm,f);
+    X.beginPath();X.arc(p.x,p.y,6,0,Math.PI*2);
+    X.fillStyle='rgba(100,200,255,0.9)';X.fill();
+  });
+}
+
+// ======================== FIRE ========================
+function fxFire(lm,pt){
+  // Skeleton glow
+  var SK=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20]];
+  SK.forEach(function(s){
+    var a=pt(lm,s[0]),b=pt(lm,s[1]);
+    X.beginPath();X.moveTo(a.x,a.y);X.lineTo(b.x,b.y);
+    X.strokeStyle='rgba(255,80,0,0.25)';X.lineWidth=2;X.stroke();
+  });
+
+  // Fire particles from each fingertip
+  TIPS.forEach(function(f,idx){
+    var p=pt(lm,f);
+    for(var i=0;i<4;i++){
+      var angle=-Math.PI/2+(Math.random()-0.5)*1.2;
+      var speed=2+Math.random()*4;
+      var r=200+Math.round(Math.random()*55);
+      var g=Math.round(50+Math.random()*150);
+      addP(
+        p.x+(Math.random()-0.5)*6,
+        p.y+(Math.random()-0.5)*6,
+        Math.cos(angle)*speed*(Math.random()-0.5)*2,
+        Math.sin(angle)*speed-Math.random()*3,
+        20+Math.round(Math.random()*20),
+        r,g,0,
+        3+Math.random()*3
+      );
+    }
+    // Fingertip glow
+    var gr=14+4*Math.sin(t*6+idx);
+    X.beginPath();X.arc(p.x,p.y,gr,0,Math.PI*2);
+    X.fillStyle='rgba(255,120,0,0.5)';X.fill();
+    X.beginPath();X.arc(p.x,p.y,gr*0.5,0,Math.PI*2);
+    X.fillStyle='rgba(255,220,50,0.8)';X.fill();
+    X.beginPath();X.arc(p.x,p.y,4,0,Math.PI*2);
+    X.fillStyle='rgba(255,255,200,1)';X.fill();
+  });
+}
+
+// ======================== REPULSOR ========================
+function fxRepulsor(lm,pt){
+  var palm=palmCenter(lm,pt);
+  // Charge level based on hand openness (distance from wrist to middle tip)
+  var wrist=pt(lm,0), midTip=pt(lm,12);
+  var openness=Math.hypot(wrist.x-midTip.x,wrist.y-midTip.y);
+  var charge=Math.min(openness/200,1);
+
+  // Skeleton
+  var SK=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20]];
+  SK.forEach(function(s){
+    var a=pt(lm,s[0]),b=pt(lm,s[1]);
+    X.beginPath();X.moveTo(a.x,a.y);X.lineTo(b.x,b.y);
+    X.strokeStyle='rgba(0,180,255,'+(0.3*charge).toFixed(2)+')';X.lineWidth=1.5;X.stroke();
+  });
+
+  // Inner palm circle (arc reactor)
+  var coreR=12+6*charge+4*Math.sin(t*8);
+  for(var ring=3;ring>=0;ring--){
+    var rr=coreR+ring*12*charge;
+    X.beginPath();X.arc(palm.x,palm.y,rr,0,Math.PI*2);
+    X.strokeStyle='rgba(100,200,255,'+(0.2*(1-ring/4)*charge).toFixed(2)+')';
+    X.lineWidth=2;X.stroke();
+  }
+  X.beginPath();X.arc(palm.x,palm.y,coreR,0,Math.PI*2);
+  X.fillStyle='rgba(120,200,255,'+(0.6*charge).toFixed(2)+')';X.fill();
+  X.beginPath();X.arc(palm.x,palm.y,coreR*0.4,0,Math.PI*2);
+  X.fillStyle='rgba(255,255,255,'+(0.9*charge).toFixed(2)+')';X.fill();
+
+  // Beam direction (from palm outward, opposite of fingers)
+  var dx=palm.x-midTip.x, dy=palm.y-midTip.y;
+  var len=Math.hypot(dx,dy)||1;
+  dx/=len; dy/=len;
+
+  if(charge>0.5){
+    // Beam
+    var beamLen=150+200*charge+50*Math.sin(t*10);
+    var bx=palm.x+dx*beamLen, by=palm.y+dy*beamLen;
+
+    // Beam core
+    X.beginPath();X.moveTo(palm.x,palm.y);X.lineTo(bx,by);
+    X.strokeStyle='rgba(150,220,255,'+(0.7*charge).toFixed(2)+')';
+    X.lineWidth=6*charge;X.stroke();
+
+    // Beam glow
+    X.beginPath();X.moveTo(palm.x,palm.y);X.lineTo(bx,by);
+    X.strokeStyle='rgba(100,180,255,'+(0.3*charge).toFixed(2)+')';
+    X.lineWidth=18*charge;X.stroke();
+
+    // Beam outer glow
+    X.beginPath();X.moveTo(palm.x,palm.y);X.lineTo(bx,by);
+    X.strokeStyle='rgba(80,160,255,'+(0.1*charge).toFixed(2)+')';
+    X.lineWidth=30*charge;X.stroke();
+
+    // Beam particles
+    for(var i=0;i<3;i++){
+      var frac=Math.random();
+      var px=palm.x+dx*beamLen*frac+(Math.random()-0.5)*20*charge;
+      var py=palm.y+dy*beamLen*frac+(Math.random()-0.5)*20*charge;
+      addP(px,py,(Math.random()-0.5)*3,(Math.random()-0.5)*3,12,150,220,255,2);
+    }
+
+    // Impact flash
+    X.beginPath();X.arc(bx,by,10+10*Math.random()*charge,0,Math.PI*2);
+    X.fillStyle='rgba(200,240,255,'+(0.5*charge).toFixed(2)+')';X.fill();
+  }
+
+  // Fingertip highlights
+  TIPS.forEach(function(f){
+    var p=pt(lm,f);
+    X.beginPath();X.arc(p.x,p.y,4+2*charge,0,Math.PI*2);
+    X.fillStyle='rgba(100,200,255,'+(0.5+0.5*charge).toFixed(2)+')';X.fill();
+  });
+}
+
+// ======================== PORTAL ========================
+function fxPortal(lm,pt){
+  var palm=palmCenter(lm,pt);
+
+  // Spinning rings
+  for(var ring=0;ring<5;ring++){
+    var r=20+ring*18;
+    var segments=12+ring*4;
+    var speed=2-ring*0.3;
+    var dir=ring%2===0?1:-1;
+    for(var s=0;s<segments;s++){
+      var angle=dir*t*speed+s*(Math.PI*2/segments);
+      var a2=angle+(Math.PI*2/segments)*0.7;
+      X.beginPath();
+      X.arc(palm.x,palm.y,r,angle,a2);
+      var hue=Math.round(270+ring*20+t*30)%360;
+      var alpha=(0.7-ring*0.12);
+      X.strokeStyle='hsla('+hue+',80%,60%,'+alpha.toFixed(2)+')';
+      X.lineWidth=3-ring*0.4;
+      X.stroke();
+    }
+  }
+
+  // Suction particles from edges toward center
+  for(var i=0;i<3;i++){
+    var angle=Math.random()*Math.PI*2;
+    var dist=80+Math.random()*60;
+    var px=palm.x+Math.cos(angle)*dist;
+    var py=palm.y+Math.sin(angle)*dist;
+    var dx=palm.x-px, dy=palm.y-py;
+    var len=Math.hypot(dx,dy)||1;
+    addP(px,py,dx/len*4,dy/len*4,15,180,100,255,2+Math.random()*2);
+  }
+
+  // Dark center
+  X.beginPath();X.arc(palm.x,palm.y,18,0,Math.PI*2);
+  X.fillStyle='rgba(10,0,20,0.9)';X.fill();
+
+  // Center glow
+  X.beginPath();X.arc(palm.x,palm.y,12+3*Math.sin(t*4),0,Math.PI*2);
+  X.fillStyle='rgba(150,50,255,0.6)';X.fill();
+  X.beginPath();X.arc(palm.x,palm.y,5,0,Math.PI*2);
+  X.fillStyle='rgba(255,200,255,0.9)';X.fill();
+
+  // Fingertip connectors spiraling into portal
+  TIPS.forEach(function(f){
+    var fp=pt(lm,f);
+    X.beginPath();X.moveTo(fp.x,fp.y);
+    // Curved line to portal
+    var cpx=fp.x+(palm.x-fp.x)*0.5+(Math.sin(t*3)*30);
+    var cpy=fp.y+(palm.y-fp.y)*0.5+(Math.cos(t*3)*30);
+    X.quadraticCurveTo(cpx,cpy,palm.x,palm.y);
+    X.strokeStyle='rgba(180,100,255,0.3)';X.lineWidth=1.5;X.stroke();
+
+    X.beginPath();X.arc(fp.x,fp.y,5,0,Math.PI*2);
+    X.fillStyle='rgba(180,100,255,0.8)';X.fill();
+  });
+}
+</script>
+</body>
+</html>
