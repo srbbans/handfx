@@ -3,437 +3,434 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Hand FX</title>
+<title>HandFX</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   body{background:#000;overflow:hidden;font-family:monospace}
-  #V{position:absolute;top:0;left:0;width:100vw;height:100vh;object-fit:cover;transform:scaleX(-1);opacity:0.5}
+  #V{position:absolute;top:0;left:0;width:100vw;height:100vh;object-fit:cover;transform:scaleX(-1);opacity:0.45}
   #C{position:absolute;top:0;left:0;z-index:2}
   #start-btn{position:absolute;bottom:40px;left:50%;transform:translateX(-50%);background:rgba(0,255,200,0.15);border:1px solid rgba(0,255,200,0.6);color:#0fc;font-family:monospace;font-size:13px;padding:14px 30px;cursor:pointer;z-index:10;letter-spacing:3px}
   #start-btn:disabled{opacity:0.4;cursor:default}
-  #ctrls{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);display:none;flex-wrap:wrap;justify-content:center;gap:8px;z-index:10;max-width:95vw}
-  .cb{background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.25);color:rgba(255,255,255,0.5);font-family:monospace;font-size:10px;padding:7px 12px;cursor:pointer;letter-spacing:1px;border-radius:4px;transition:all .2s}
-  .cb.on{border-color:#0fc;color:#0fc;background:rgba(0,255,200,0.1)}
+  #ctrls{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);display:none;flex-wrap:wrap;justify-content:center;gap:5px;z-index:10;max-width:99vw;padding:6px}
+  .cb{background:rgba(0,0,0,0.75);border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.45);font-family:monospace;font-size:8px;padding:5px 8px;cursor:pointer;letter-spacing:1px;border-radius:3px;transition:all .2s}
+  .cb.on{border-color:#0fc;color:#0fc;background:rgba(0,255,200,0.12)}
+  #title{position:absolute;top:12px;left:50%;transform:translateX(-50%);font-family:monospace;font-size:10px;letter-spacing:5px;color:rgba(0,255,200,0.3);text-transform:uppercase;z-index:10;pointer-events:none}
 </style>
 </head>
 <body>
 <video id="V" playsinline autoplay muted></video>
 <canvas id="C"></canvas>
+<div id="title">HandFX</div>
 <button id="start-btn" disabled>LOADING MODEL...</button>
 <div id="ctrls">
-  <button class="cb on" onclick="setMode('web',this)">WEB</button>
-  <button class="cb" onclick="setMode('pulse',this)">PULSE</button>
-  <button class="cb" onclick="setMode('cyber',this)">CYBER</button>
-  <button class="cb" onclick="setMode('orb',this)">ORB</button>
-  <button class="cb" onclick="setMode('fire',this)">FIRE</button>
-  <button class="cb" onclick="setMode('repulsor',this)">REPULSOR</button>
-  <button class="cb" onclick="setMode('portal',this)">PORTAL</button>
+  <button class="cb on" onclick="setM('fireball',this)">FIREBALL</button>
+  <button class="cb" onclick="setM('lightning',this)">LIGHTNING</button>
+  <button class="cb" onclick="setM('repulsor',this)">REPULSOR</button>
+  <button class="cb" onclick="setM('spirit',this)">SPIRIT</button>
+  <button class="cb" onclick="setM('kamehameha',this)">KAMEHAMEHA</button>
+  <button class="cb" onclick="setM('galaxy',this)">GALAXY</button>
+  <button class="cb" onclick="setM('ice',this)">ICE</button>
+  <button class="cb" onclick="setM('phoenix',this)">PHOENIX</button>
+  <button class="cb" onclick="setM('blackhole',this)">BLACKHOLE</button>
+  <button class="cb" onclick="setM('strange',this)">STRANGE</button>
+  <button class="cb" onclick="setM('plasma',this)">PLASMA</button>
+  <button class="cb" onclick="setM('matrix',this)">MATRIX</button>
+  <button class="cb" onclick="setM('shield',this)">SHIELD</button>
+  <button class="cb" onclick="setM('fire',this)">FIRE</button>
+  <button class="cb" onclick="setM('portal',this)">PORTAL</button>
+  <button class="cb" onclick="setM('orb',this)">ORB</button>
+  <button class="cb" onclick="setM('web',this)">WEB</button>
+  <button class="cb" onclick="setM('cyber',this)">CYBER</button>
+  <button class="cb" onclick="setM('pulse',this)">PULSE</button>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose@0.1.0/dist/handpose.min.js"></script>
 <script>
-var V=document.getElementById('V');
-var C=document.getElementById('C');
-var X=C.getContext('2d');
-var mode='web', mdl=null, t=0, lastHands=[];
+var V=document.getElementById('V'),C=document.getElementById('C'),X=C.getContext('2d');
+var mode='fireball',mdl=null,t=0,lastHands=[];
+var P=[],MP=800;
 
-// Particle system
-var particles=[];
-var MAX_P=400;
+function addP(x,y,vx,vy,life,r,g,b,sz,gv){if(P.length>MP)P.splice(0,P.length-MP);P.push({x:x,y:y,vx:vx,vy:vy,l:life,ml:life,r:r,g:g,b:b,sz:sz||3,gv:gv||0})}
+function tickP(){for(var i=P.length-1;i>=0;i--){var p=P[i];p.x+=p.vx;p.y+=p.vy;p.vy+=p.gv;p.l--;if(p.l<=0)P.splice(i,1)}}
+function drawP(){P.forEach(function(p){var a=p.l/p.ml;X.beginPath();X.arc(p.x,p.y,p.sz*a,0,Math.PI*2);X.fillStyle='rgba('+p.r+','+p.g+','+p.b+','+a.toFixed(2)+')';X.fill()})}
+function setM(m,el){mode=m;P=[];document.querySelectorAll('.cb').forEach(function(b){b.classList.remove('on')});el.classList.add('on')}
+function palm(lm,pt){var ids=[0,5,9,13,17],cx=0,cy=0;ids.forEach(function(i){var p=pt(lm,i);cx+=p.x;cy+=p.y});return{x:cx/5,y:cy/5}}
+function rnd(a,b){return a+Math.random()*(b-a)}
+function dst(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+function glow(x,y,r,cr,cg,cb,ca){X.beginPath();X.arc(x,y,r,0,Math.PI*2);X.fillStyle='rgba('+cr+','+cg+','+cb+','+ca.toFixed(3)+')';X.fill()}
 
-function addP(x,y,vx,vy,life,r,g,b,size){
-  if(particles.length>MAX_P) particles.splice(0,particles.length-MAX_P);
-  particles.push({x:x,y:y,vx:vx,vy:vy,life:life,maxLife:life,r:r,g:g,b:b,size:size||3});
-}
+var TIPS=[4,8,12,16,20],NODES=[0,4,5,8,9,12,13,16,17,20];
+var SK=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20]];
 
-function tickParticles(){
-  for(var i=particles.length-1;i>=0;i--){
-    var p=particles[i];
-    p.x+=p.vx; p.y+=p.vy;
-    p.life--;
-    if(p.life<=0) particles.splice(i,1);
-  }
-}
-
-function drawParticles(){
-  particles.forEach(function(p){
-    var a=(p.life/p.maxLife);
-    X.beginPath();
-    X.arc(p.x,p.y,p.size*a,0,Math.PI*2);
-    X.fillStyle='rgba('+p.r+','+p.g+','+p.b+','+a.toFixed(2)+')';
-    X.fill();
-  });
-}
-
-function setMode(m,el){
-  mode=m; particles=[];
-  document.querySelectorAll('.cb').forEach(function(b){b.classList.remove('on')});
-  el.classList.add('on');
-}
-
-// Palm center from landmarks
-function palmCenter(lm,pt){
-  var ids=[0,5,9,13,17];
-  var cx=0,cy=0;
-  ids.forEach(function(i){var p=pt(lm,i);cx+=p.x;cy+=p.y});
-  return{x:cx/5, y:cy/5};
-}
-
-// LOAD
 (async function(){
-  try{
-    await tf.setBackend('webgl'); await tf.ready();
-    mdl=await handpose.load();
-    var b=document.getElementById('start-btn');
-    b.textContent='START'; b.disabled=false; b.onclick=startCam;
+  try{await tf.setBackend('webgl');await tf.ready();mdl=await handpose.load();
+    var b=document.getElementById('start-btn');b.textContent='START';b.disabled=false;b.onclick=startCam;
   }catch(e){console.error(e)}
 })();
 
 async function startCam(){
-  try{
-    var stream=await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:'user',width:{ideal:640},height:{ideal:480}}
-    });
-    V.srcObject=stream; V.play();
-    V.onloadeddata=function(){
-      C.width=window.innerWidth; C.height=window.innerHeight;
-      document.getElementById('start-btn').style.display='none';
-      document.getElementById('ctrls').style.display='flex';
-      requestAnimationFrame(draw);
-      detectLoop();
-    };
+  try{var s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}}});
+    V.srcObject=s;V.play();V.onloadeddata=function(){C.width=window.innerWidth;C.height=window.innerHeight;
+      document.getElementById('start-btn').style.display='none';document.getElementById('ctrls').style.display='flex';
+      requestAnimationFrame(draw);detectLoop()};
   }catch(e){console.error(e)}
 }
-
-async function detectLoop(){
-  try{lastHands=await mdl.estimateHands(V)}catch(e){}
-  setTimeout(detectLoop,50);
-}
+async function detectLoop(){try{lastHands=await mdl.estimateHands(V)}catch(e){}setTimeout(detectLoop,50)}
 
 function draw(){
-  requestAnimationFrame(draw);
-  t+=0.02;
-  var W=window.innerWidth, H=window.innerHeight;
-  if(C.width!==W)C.width=W;
-  if(C.height!==H)C.height=H;
-  X.clearRect(0,0,W,H);
-
-  tickParticles();
-
-  var hands=lastHands;
-  var vw=V.videoWidth||1, vh=V.videoHeight||1;
-
-  function pt(lm,i){
-    return{x:W-(lm[i][0]/vw*W), y:lm[i][1]/vh*H};
-  }
-
-  if(!hands||!hands.length){
-    drawParticles();
-    return;
-  }
-
+  requestAnimationFrame(draw);t+=0.02;
+  var W=window.innerWidth,H=window.innerHeight;
+  if(C.width!==W)C.width=W;if(C.height!==H)C.height=H;
+  X.clearRect(0,0,W,H);tickP();
+  var hands=lastHands,vw=V.videoWidth||1,vh=V.videoHeight||1;
+  function pt(lm,i){return{x:W-(lm[i][0]/vw*W),y:lm[i][1]/vh*H}}
+  if(!hands||!hands.length){drawP();return}
   var lm=hands[0].landmarks;
-
-  // Run current mode
-  switch(mode){
-    case 'web': fxWeb(lm,pt); break;
-    case 'pulse': fxPulse(lm,pt); break;
-    case 'cyber': fxCyber(lm,pt); break;
-    case 'orb': fxOrb(lm,pt); break;
-    case 'fire': fxFire(lm,pt); break;
-    case 'repulsor': fxRepulsor(lm,pt); break;
-    case 'portal': fxPortal(lm,pt); break;
-  }
-
-  drawParticles();
+  try{window['fx_'+mode](lm,pt,W,H)}catch(e){}
+  drawP();
 }
 
-var TIPS=[4,8,12,16,20];
-var NODES=[0,4,5,8,9,12,13,16,17,20];
+// ============== FIREBALL ==============
+fx_fireball=function(lm,pt){
+  var pm=palm(lm,pt),mid=pt(lm,12);
+  var fx=pm.x*0.55+mid.x*0.45,fy=pm.y-65+10*Math.sin(t*2);
+  var br=48+15*Math.sin(t*3);
+  for(var i=0;i<10;i++){var a=rnd(0,Math.PI*2),d=rnd(0,br*0.9);addP(fx+Math.cos(a)*d,fy+Math.sin(a)*d,rnd(-2,2),rnd(-7,-2),30,255,Math.round(rnd(30,200)),0,5+rnd(0,5),-0.05)}
+  for(var i=0;i<3;i++)addP(fx+rnd(-20,20),fy-br,rnd(-1,1),rnd(-3,-1),45,100,100,100,7+rnd(0,5),0);
+  glow(fx,fy,br+30,255,60,0,0.12);glow(fx,fy,br,255,80,0,0.5);glow(fx,fy,br*0.65,255,160,20,0.6);glow(fx,fy,br*0.3,255,240,100,0.9);glow(fx,fy,br*0.12,255,255,230,1);
+  TIPS.forEach(function(f){var fp=pt(lm,f);X.beginPath();X.moveTo(fp.x,fp.y);X.lineTo(fx,fy);X.strokeStyle='rgba(255,120,0,0.2)';X.lineWidth=2;X.stroke();glow(fp.x,fp.y,7,255,150,0,0.8)});
+};
 
-// ======================== WEB ========================
-function fxWeb(lm,pt){
-  var ps=NODES.map(function(i){return pt(lm,i)});
-  for(var i=0;i<ps.length;i++) for(var j=i+1;j<ps.length;j++){
-    var d=Math.hypot(ps[i].x-ps[j].x,ps[i].y-ps[j].y);
-    if(d<300){
-      var a=(1-d/300)*0.95*(0.6+0.4*Math.sin(t*3+i+j));
-      X.beginPath();X.moveTo(ps[i].x,ps[i].y);X.lineTo(ps[j].x,ps[j].y);
-      X.strokeStyle='rgba(0,255,180,'+a.toFixed(2)+')';X.lineWidth=a*3;X.stroke();
-    }
-  }
-  TIPS.forEach(function(f,idx){
-    var p=pt(lm,f),r=10+5*Math.sin(t*4+idx);
-    X.beginPath();X.arc(p.x,p.y,r,0,Math.PI*2);X.fillStyle='rgba(0,255,220,1)';X.fill();
-    X.beginPath();X.arc(p.x,p.y,r+14,0,Math.PI*2);X.strokeStyle='rgba(0,255,200,0.4)';X.lineWidth=2;X.stroke();
-  });
-}
+// ============== LIGHTNING ==============
+fx_lightning=function(lm,pt){
+  function bolt(ax,ay,bx,by,dep,al){if(dep<=0){X.beginPath();X.moveTo(ax,ay);X.lineTo(bx,by);X.strokeStyle='rgba(150,200,255,'+al.toFixed(2)+')';X.lineWidth=1+dep;X.stroke();return}
+    var mx=(ax+bx)/2+rnd(-25,25),my=(ay+by)/2+rnd(-25,25);bolt(ax,ay,mx,my,dep-1,al);bolt(mx,my,bx,by,dep-1,al);if(Math.random()>0.55)bolt(mx,my,mx+rnd(-40,40),my+rnd(-40,40),dep-2,al*0.4)}
+  if(Math.random()>0.2){var i=TIPS[Math.floor(rnd(0,5))],j=TIPS[Math.floor(rnd(0,5))];if(i!==j){var a=pt(lm,i),b=pt(lm,j);bolt(a.x,a.y,b.x,b.y,5,0.95)}}
+  if(Math.random()>0.5){var tip=TIPS[Math.floor(rnd(0,5))],w=pt(lm,0),tp=pt(lm,tip);bolt(tp.x,tp.y,w.x,w.y,4,0.7)}
+  TIPS.forEach(function(f){var p=pt(lm,f),fl=rnd(0.5,1);glow(p.x,p.y,14*fl,150,200,255,0.5*fl);glow(p.x,p.y,7*fl,200,230,255,0.8*fl);glow(p.x,p.y,3,255,255,255,1);if(Math.random()>0.4)addP(p.x,p.y,rnd(-6,6),rnd(-6,6),10,180,220,255,2,0)});
+  SK.forEach(function(s){var a=pt(lm,s[0]),b=pt(lm,s[1]);X.beginPath();X.moveTo(a.x,a.y);X.lineTo(b.x,b.y);X.strokeStyle='rgba(100,150,255,0.35)';X.lineWidth=1.5;X.stroke()});
+};
 
-// ======================== PULSE ========================
-function fxPulse(lm,pt){
-  var ps=NODES.map(function(i){return pt(lm,i)});
-  var b=(Math.sin(t*5)+1)/2;
-  for(var i=0;i<ps.length;i++) for(var j=i+1;j<ps.length;j++){
-    var d=Math.hypot(ps[i].x-ps[j].x,ps[i].y-ps[j].y);
-    if(d<260){
-      var a=(1-d/260)*0.9;
-      X.beginPath();X.moveTo(ps[i].x,ps[i].y);X.lineTo(ps[j].x,ps[j].y);
-      X.strokeStyle='rgba('+Math.round(255*b)+','+Math.round(80+170*(1-b))+',255,'+a.toFixed(2)+')';
-      X.lineWidth=a*3;X.stroke();
-    }
-  }
-  TIPS.forEach(function(f,idx){
-    var p=pt(lm,f),hue=Math.round((t*50+idx*72)%360),r2=12+8*b;
-    X.beginPath();X.arc(p.x,p.y,r2,0,Math.PI*2);
-    X.fillStyle='hsla('+hue+',100%,65%,1)';X.fill();
-  });
-}
+// ============== REPULSOR ==============
+fx_repulsor=function(lm,pt){
+  var pm=palm(lm,pt),midTip=pt(lm,12),charge=Math.min(dst(pt(lm,0),midTip)/200,1);
+  SK.forEach(function(s){var a=pt(lm,s[0]),b=pt(lm,s[1]);X.beginPath();X.moveTo(a.x,a.y);X.lineTo(b.x,b.y);X.strokeStyle='rgba(0,180,255,'+(0.3*charge).toFixed(2)+')';X.lineWidth=1.5;X.stroke()});
+  var coreR=16+10*charge+5*Math.sin(t*8);
+  for(var r=3;r>=0;r--){X.beginPath();X.arc(pm.x,pm.y,coreR+r*16*charge,0,Math.PI*2);X.strokeStyle='rgba(100,200,255,'+(0.25*(1-r/4)*charge).toFixed(2)+')';X.lineWidth=2.5;X.stroke()}
+  glow(pm.x,pm.y,coreR,120,200,255,0.7*charge);glow(pm.x,pm.y,coreR*0.35,255,255,255,0.9*charge);
+  if(charge>0.35){var dx=pm.x-midTip.x,dy=pm.y-midTip.y,len=Math.hypot(dx,dy)||1;dx/=len;dy/=len;
+    var bl=200+300*charge+80*Math.sin(t*10),bx=pm.x+dx*bl,by=pm.y+dy*bl;
+    X.beginPath();X.moveTo(pm.x,pm.y);X.lineTo(bx,by);X.strokeStyle='rgba(150,220,255,'+(0.8*charge).toFixed(2)+')';X.lineWidth=10*charge;X.stroke();
+    X.beginPath();X.moveTo(pm.x,pm.y);X.lineTo(bx,by);X.strokeStyle='rgba(100,180,255,'+(0.25*charge).toFixed(2)+')';X.lineWidth=28*charge;X.stroke();
+    for(var i=0;i<5;i++){var fr=rnd(0,1);addP(pm.x+dx*bl*fr+rnd(-18,18)*charge,pm.y+dy*bl*fr+rnd(-18,18)*charge,rnd(-3,3),rnd(-3,3),12,150,220,255,3,0)}
+    glow(bx,by,15+rnd(0,12)*charge,200,240,255,0.6*charge)}
+};
 
-// ======================== CYBER ========================
-function fxCyber(lm,pt){
-  var SK=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20],[5,9],[9,13],[13,17]];
-  SK.forEach(function(s){
-    var a=pt(lm,s[0]),b=pt(lm,s[1]);
-    X.beginPath();X.moveTo(a.x,a.y);X.lineTo(b.x,b.y);
-    X.strokeStyle='rgba(160,80,255,0.7)';X.lineWidth=2;X.stroke();
-  });
-  TIPS.forEach(function(f,idx){
-    var p=pt(lm,f);
-    X.beginPath();X.arc(p.x,p.y,8,0,Math.PI*2);X.fillStyle='rgba(255,50,210,1)';X.fill();
-    var sz=20+4*Math.sin(t*5+idx);
-    X.beginPath();X.moveTo(p.x-sz,p.y);X.lineTo(p.x+sz,p.y);
-    X.moveTo(p.x,p.y-sz);X.lineTo(p.x,p.y+sz);
-    X.strokeStyle='rgba(255,50,210,0.8)';X.lineWidth=2;X.stroke();
-  });
-}
+// ============== SPIRIT BOMB ==============
+fx_spirit=function(lm,pt){
+  var pm=palm(lm,pt),mid=pt(lm,12),sx=pm.x*0.5+mid.x*0.5,sy=pm.y-110+15*Math.sin(t*1.5);
+  var sbR=60+18*Math.sin(t*1.5)+8*Math.sin(t*4);
+  for(var i=0;i<7;i++){var a=rnd(0,Math.PI*2),d=180+rnd(0,100);addP(sx+Math.cos(a)*d,sy+Math.sin(a)*d,(sx-(sx+Math.cos(a)*d))*0.06,(sy-(sy+Math.sin(a)*d))*0.06,25,150,200,255,3+rnd(0,3),0)}
+  TIPS.forEach(function(f){var fp=pt(lm,f);addP(fp.x+rnd(-5,5),fp.y,rnd(-1,1),(sy-fp.y)*0.04,30,100,180,255,2.5,0);X.beginPath();X.moveTo(fp.x,fp.y);X.lineTo(sx,sy);X.strokeStyle='rgba(80,160,255,0.15)';X.lineWidth=2;X.stroke()});
+  glow(sx,sy,sbR+40,60,140,255,0.06);glow(sx,sy,sbR+20,80,160,255,0.1);glow(sx,sy,sbR,100,180,255,0.4);
+  for(var i=0;i<5;i++){var a=t*2+i*Math.PI*2/5;X.beginPath();X.arc(sx,sy,sbR*0.85,a,a+1);X.strokeStyle='rgba(180,220,255,0.5)';X.lineWidth=2.5;X.stroke()}
+  glow(sx,sy,sbR*0.5,180,220,255,0.55);glow(sx,sy,sbR*0.2,255,255,255,0.9);
+  X.beginPath();X.arc(sx,sy,sbR+6,0,Math.PI*2);X.strokeStyle='rgba(120,200,255,0.45)';X.lineWidth=2.5;X.stroke();
+};
 
-// ======================== ENERGY ORB ========================
-function fxOrb(lm,pt){
-  var palm=palmCenter(lm,pt);
-  var mid=pt(lm,12);
-  // Orb floats above palm toward middle finger
-  var ox=palm.x*0.5+mid.x*0.5;
-  var oy=palm.y-60+10*Math.sin(t*2);
-  var orbR=28+8*Math.sin(t*3);
+// ============== KAMEHAMEHA ==============
+fx_kamehameha=function(lm,pt,W,H){
+  var pm=palm(lm,pt),mid=pt(lm,12),wr=pt(lm,0);
+  var charge=Math.min(dst(wr,mid)/180,1);
+  // Direction from wrist through palm
+  var dx=pm.x-wr.x,dy=pm.y-wr.y,len=Math.hypot(dx,dy)||1;dx/=len;dy/=len;
 
-  // Orbiting particles
-  for(var i=0;i<6;i++){
-    var angle=t*3+i*(Math.PI*2/6);
-    var orbitR=orbR+18;
-    var px=ox+Math.cos(angle)*orbitR;
-    var py=oy+Math.sin(angle)*orbitR*0.6;
-    addP(px,py,(Math.random()-0.5)*2,-Math.random()*2,15,100,200,255,2);
-  }
+  // Charge-up aura
+  for(var i=0;i<4;i++){var a=rnd(0,Math.PI*2),d=30+rnd(0,40)*charge;addP(pm.x+Math.cos(a)*d,pm.y+Math.sin(a)*d,-Math.cos(a)*2,-Math.sin(a)*2,18,80,150,255,3+rnd(0,3),0)}
 
-  // Energy streams from fingertips to orb
-  TIPS.forEach(function(f){
-    var fp=pt(lm,f);
-    for(var s=0;s<5;s++){
-      var frac=s/5+((t*2)%0.2);
-      if(frac>1)frac-=1;
-      var ex=fp.x+(ox-fp.x)*frac;
-      var ey=fp.y+(oy-fp.y)*frac;
-      X.beginPath();X.arc(ex,ey,2,0,Math.PI*2);
-      X.fillStyle='rgba(100,200,255,'+(0.6*frac).toFixed(2)+')';X.fill();
-    }
-    X.beginPath();X.moveTo(fp.x,fp.y);X.lineTo(ox,oy);
-    X.strokeStyle='rgba(100,180,255,0.15)';X.lineWidth=1;X.stroke();
-  });
-
-  // Orb glow layers
-  for(var r=orbR+30;r>0;r-=6){
-    X.beginPath();X.arc(ox,oy,r,0,Math.PI*2);
-    X.fillStyle='rgba(80,180,255,'+(0.04*(1-r/(orbR+30))).toFixed(3)+')';X.fill();
-  }
-  // Core orb
-  X.beginPath();X.arc(ox,oy,orbR,0,Math.PI*2);
-  X.fillStyle='rgba(120,200,255,0.5)';X.fill();
-  X.beginPath();X.arc(ox,oy,orbR*0.6,0,Math.PI*2);
-  X.fillStyle='rgba(200,240,255,0.7)';X.fill();
-  X.beginPath();X.arc(ox,oy,orbR*0.25,0,Math.PI*2);
-  X.fillStyle='rgba(255,255,255,0.9)';X.fill();
-
-  // Fingertip dots
-  TIPS.forEach(function(f){
-    var p=pt(lm,f);
-    X.beginPath();X.arc(p.x,p.y,6,0,Math.PI*2);
-    X.fillStyle='rgba(100,200,255,0.9)';X.fill();
-  });
-}
-
-// ======================== FIRE ========================
-function fxFire(lm,pt){
-  // Skeleton glow
-  var SK=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20]];
-  SK.forEach(function(s){
-    var a=pt(lm,s[0]),b=pt(lm,s[1]);
-    X.beginPath();X.moveTo(a.x,a.y);X.lineTo(b.x,b.y);
-    X.strokeStyle='rgba(255,80,0,0.25)';X.lineWidth=2;X.stroke();
-  });
-
-  // Fire particles from each fingertip
-  TIPS.forEach(function(f,idx){
-    var p=pt(lm,f);
-    for(var i=0;i<4;i++){
-      var angle=-Math.PI/2+(Math.random()-0.5)*1.2;
-      var speed=2+Math.random()*4;
-      var r=200+Math.round(Math.random()*55);
-      var g=Math.round(50+Math.random()*150);
-      addP(
-        p.x+(Math.random()-0.5)*6,
-        p.y+(Math.random()-0.5)*6,
-        Math.cos(angle)*speed*(Math.random()-0.5)*2,
-        Math.sin(angle)*speed-Math.random()*3,
-        20+Math.round(Math.random()*20),
-        r,g,0,
-        3+Math.random()*3
-      );
-    }
-    // Fingertip glow
-    var gr=14+4*Math.sin(t*6+idx);
-    X.beginPath();X.arc(p.x,p.y,gr,0,Math.PI*2);
-    X.fillStyle='rgba(255,120,0,0.5)';X.fill();
-    X.beginPath();X.arc(p.x,p.y,gr*0.5,0,Math.PI*2);
-    X.fillStyle='rgba(255,220,50,0.8)';X.fill();
-    X.beginPath();X.arc(p.x,p.y,4,0,Math.PI*2);
-    X.fillStyle='rgba(255,255,200,1)';X.fill();
-  });
-}
-
-// ======================== REPULSOR ========================
-function fxRepulsor(lm,pt){
-  var palm=palmCenter(lm,pt);
-  // Charge level based on hand openness (distance from wrist to middle tip)
-  var wrist=pt(lm,0), midTip=pt(lm,12);
-  var openness=Math.hypot(wrist.x-midTip.x,wrist.y-midTip.y);
-  var charge=Math.min(openness/200,1);
-
-  // Skeleton
-  var SK=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[0,9],[9,10],[10,11],[11,12],[0,13],[13,14],[14,15],[15,16],[0,17],[17,18],[18,19],[19,20]];
-  SK.forEach(function(s){
-    var a=pt(lm,s[0]),b=pt(lm,s[1]);
-    X.beginPath();X.moveTo(a.x,a.y);X.lineTo(b.x,b.y);
-    X.strokeStyle='rgba(0,180,255,'+(0.3*charge).toFixed(2)+')';X.lineWidth=1.5;X.stroke();
-  });
-
-  // Inner palm circle (arc reactor)
-  var coreR=12+6*charge+4*Math.sin(t*8);
-  for(var ring=3;ring>=0;ring--){
-    var rr=coreR+ring*12*charge;
-    X.beginPath();X.arc(palm.x,palm.y,rr,0,Math.PI*2);
-    X.strokeStyle='rgba(100,200,255,'+(0.2*(1-ring/4)*charge).toFixed(2)+')';
-    X.lineWidth=2;X.stroke();
-  }
-  X.beginPath();X.arc(palm.x,palm.y,coreR,0,Math.PI*2);
-  X.fillStyle='rgba(120,200,255,'+(0.6*charge).toFixed(2)+')';X.fill();
-  X.beginPath();X.arc(palm.x,palm.y,coreR*0.4,0,Math.PI*2);
-  X.fillStyle='rgba(255,255,255,'+(0.9*charge).toFixed(2)+')';X.fill();
-
-  // Beam direction (from palm outward, opposite of fingers)
-  var dx=palm.x-midTip.x, dy=palm.y-midTip.y;
-  var len=Math.hypot(dx,dy)||1;
-  dx/=len; dy/=len;
+  // Core ball at palm
+  var cR=20+15*charge+8*Math.sin(t*6);
+  glow(pm.x,pm.y,cR+30,50,100,255,0.08*charge);glow(pm.x,pm.y,cR+15,80,150,255,0.15*charge);glow(pm.x,pm.y,cR,100,180,255,0.6*charge);glow(pm.x,pm.y,cR*0.4,200,230,255,0.85*charge);glow(pm.x,pm.y,cR*0.15,255,255,255,1*charge);
 
   if(charge>0.5){
-    // Beam
-    var beamLen=150+200*charge+50*Math.sin(t*10);
-    var bx=palm.x+dx*beamLen, by=palm.y+dy*beamLen;
+    // MASSIVE BEAM
+    var beamW=25+30*charge+10*Math.sin(t*12);
+    var beamLen=Math.max(W,H)*1.2;
+    var bx=pm.x+dx*beamLen,by=pm.y+dy*beamLen;
 
-    // Beam core
-    X.beginPath();X.moveTo(palm.x,palm.y);X.lineTo(bx,by);
-    X.strokeStyle='rgba(150,220,255,'+(0.7*charge).toFixed(2)+')';
-    X.lineWidth=6*charge;X.stroke();
-
-    // Beam glow
-    X.beginPath();X.moveTo(palm.x,palm.y);X.lineTo(bx,by);
-    X.strokeStyle='rgba(100,180,255,'+(0.3*charge).toFixed(2)+')';
-    X.lineWidth=18*charge;X.stroke();
-
-    // Beam outer glow
-    X.beginPath();X.moveTo(palm.x,palm.y);X.lineTo(bx,by);
-    X.strokeStyle='rgba(80,160,255,'+(0.1*charge).toFixed(2)+')';
-    X.lineWidth=30*charge;X.stroke();
+    // Outer glow beam
+    X.beginPath();X.moveTo(pm.x,pm.y);X.lineTo(bx,by);X.strokeStyle='rgba(60,120,255,'+(0.15*charge).toFixed(2)+')';X.lineWidth=beamW*3;X.stroke();
+    // Mid beam
+    X.beginPath();X.moveTo(pm.x,pm.y);X.lineTo(bx,by);X.strokeStyle='rgba(100,180,255,'+(0.4*charge).toFixed(2)+')';X.lineWidth=beamW*1.5;X.stroke();
+    // Core beam
+    X.beginPath();X.moveTo(pm.x,pm.y);X.lineTo(bx,by);X.strokeStyle='rgba(180,230,255,'+(0.8*charge).toFixed(2)+')';X.lineWidth=beamW*0.7;X.stroke();
+    // White hot center
+    X.beginPath();X.moveTo(pm.x,pm.y);X.lineTo(bx,by);X.strokeStyle='rgba(255,255,255,'+(0.5*charge).toFixed(2)+')';X.lineWidth=beamW*0.2;X.stroke();
 
     // Beam particles
-    for(var i=0;i<3;i++){
-      var frac=Math.random();
-      var px=palm.x+dx*beamLen*frac+(Math.random()-0.5)*20*charge;
-      var py=palm.y+dy*beamLen*frac+(Math.random()-0.5)*20*charge;
-      addP(px,py,(Math.random()-0.5)*3,(Math.random()-0.5)*3,12,150,220,255,2);
-    }
+    for(var i=0;i<8;i++){var fr=rnd(0.05,0.6);addP(pm.x+dx*beamLen*fr+rnd(-beamW,beamW),pm.y+dy*beamLen*fr+rnd(-beamW,beamW),rnd(-2,2),rnd(-2,2),12,150,210,255,2,0)}
 
-    // Impact flash
-    X.beginPath();X.arc(bx,by,10+10*Math.random()*charge,0,Math.PI*2);
-    X.fillStyle='rgba(200,240,255,'+(0.5*charge).toFixed(2)+')';X.fill();
+    // Screen shake / flash
+    if(Math.random()>0.85){glow(W/2,H/2,Math.max(W,H),200,230,255,0.03)}
   }
 
-  // Fingertip highlights
-  TIPS.forEach(function(f){
+  TIPS.forEach(function(f){var p=pt(lm,f);glow(p.x,p.y,5+3*charge,100,180,255,0.7*charge)});
+};
+
+// ============== GALAXY ==============
+fx_galaxy=function(lm,pt){
+  var pm=palm(lm,pt);
+  var gR=70+10*Math.sin(t*1.5);
+
+  // Spiral arms
+  for(var arm=0;arm<3;arm++){
+    var armOff=arm*Math.PI*2/3;
+    for(var i=0;i<40;i++){
+      var angle=armOff+t*0.8+i*0.15;
+      var r=8+i*1.7;
+      var x=pm.x+Math.cos(angle)*r;
+      var y=pm.y+Math.sin(angle)*r*0.55; // flatten for perspective
+      var sz=1.5+Math.sin(i*0.3+t*2)*0.8;
+      var hue=Math.round(220+arm*40+i*2)%360;
+      var alpha=(1-r/gR)*0.8;
+      if(alpha>0){X.beginPath();X.arc(x,y,sz,0,Math.PI*2);X.fillStyle='hsla('+hue+',80%,70%,'+alpha.toFixed(2)+')';X.fill()}
+    }
+  }
+
+  // Background stars
+  for(var i=0;i<3;i++){var a=rnd(0,Math.PI*2),r=rnd(10,gR);var sx=pm.x+Math.cos(a)*r,sy=pm.y+Math.sin(a)*r*0.55;addP(sx,sy,0,0,20,255,255,255,1,0)}
+
+  // Nebula glow
+  glow(pm.x,pm.y,gR,80,50,150,0.08);glow(pm.x,pm.y,gR*0.6,100,80,180,0.1);
+
+  // Core
+  glow(pm.x,pm.y,12+4*Math.sin(t*3),255,230,180,0.7);glow(pm.x,pm.y,5,255,255,240,0.95);
+
+  // Energy from fingertips
+  TIPS.forEach(function(f){var fp=pt(lm,f);X.beginPath();X.moveTo(fp.x,fp.y);X.lineTo(pm.x,pm.y);X.strokeStyle='rgba(150,100,255,0.1)';X.lineWidth=1;X.stroke();glow(fp.x,fp.y,4,150,100,255,0.6)});
+};
+
+// ============== ICE ==============
+fx_ice=function(lm,pt){
+  SK.forEach(function(s){var a=pt(lm,s[0]),b=pt(lm,s[1]);X.beginPath();X.moveTo(a.x,a.y);X.lineTo(b.x,b.y);X.strokeStyle='rgba(150,220,255,0.4)';X.lineWidth=2;X.stroke()});
+
+  TIPS.forEach(function(f,idx){
     var p=pt(lm,f);
-    X.beginPath();X.arc(p.x,p.y,4+2*charge,0,Math.PI*2);
-    X.fillStyle='rgba(100,200,255,'+(0.5+0.5*charge).toFixed(2)+')';X.fill();
+    // Ice crystal shards
+    for(var i=0;i<3;i++){
+      var a=t*2+idx*1.2+i*Math.PI*2/3;var len=18+8*Math.sin(t*3+idx+i);
+      X.beginPath();X.moveTo(p.x,p.y);X.lineTo(p.x+Math.cos(a)*len,p.y+Math.sin(a)*len);
+      X.strokeStyle='rgba(180,230,255,0.7)';X.lineWidth=2;X.stroke();
+      // Branch
+      var bx=p.x+Math.cos(a)*len*0.6,by=p.y+Math.sin(a)*len*0.6;
+      X.beginPath();X.moveTo(bx,by);X.lineTo(bx+Math.cos(a+0.8)*len*0.4,by+Math.sin(a+0.8)*len*0.4);
+      X.moveTo(bx,by);X.lineTo(bx+Math.cos(a-0.8)*len*0.4,by+Math.sin(a-0.8)*len*0.4);
+      X.strokeStyle='rgba(180,230,255,0.5)';X.lineWidth=1;X.stroke();
+    }
+    glow(p.x,p.y,12+4*Math.sin(t*4+idx),150,220,255,0.5);glow(p.x,p.y,5,220,240,255,0.9);
+
+    // Frost particles floating up
+    if(Math.random()>0.4)addP(p.x+rnd(-15,15),p.y+rnd(-10,10),rnd(-1,1),rnd(-3,-0.5),35,200,235,255,2+rnd(0,3),0);
   });
-}
 
-// ======================== PORTAL ========================
-function fxPortal(lm,pt){
-  var palm=palmCenter(lm,pt);
+  // Frost aura around palm
+  var pm=palm(lm,pt);
+  for(var i=0;i<2;i++){var a=rnd(0,Math.PI*2),d=40+rnd(0,30);addP(pm.x+Math.cos(a)*d,pm.y+Math.sin(a)*d,rnd(-0.5,0.5),rnd(-2,-0.5),30,180,230,255,3+rnd(0,2),0)}
+  glow(pm.x,pm.y,50+10*Math.sin(t*2),150,220,255,0.06);
+};
 
-  // Spinning rings
-  for(var ring=0;ring<5;ring++){
-    var r=20+ring*18;
-    var segments=12+ring*4;
-    var speed=2-ring*0.3;
-    var dir=ring%2===0?1:-1;
-    for(var s=0;s<segments;s++){
-      var angle=dir*t*speed+s*(Math.PI*2/segments);
-      var a2=angle+(Math.PI*2/segments)*0.7;
-      X.beginPath();
-      X.arc(palm.x,palm.y,r,angle,a2);
-      var hue=Math.round(270+ring*20+t*30)%360;
-      var alpha=(0.7-ring*0.12);
-      X.strokeStyle='hsla('+hue+',80%,60%,'+alpha.toFixed(2)+')';
-      X.lineWidth=3-ring*0.4;
-      X.stroke();
+// ============== PHOENIX ==============
+fx_phoenix=function(lm,pt){
+  var pm=palm(lm,pt);
+  var mid=pt(lm,12);
+  var bx=pm.x*0.5+mid.x*0.5,by=pm.y-80+15*Math.sin(t*2);
+
+  // Wing particles - two sides
+  for(var side=-1;side<=1;side+=2){
+    for(var i=0;i<5;i++){
+      var wingSpread=40+30*Math.sin(t*2);
+      var wx=bx+side*(20+i*12+rnd(0,10));
+      var wy=by+i*5-20+rnd(-8,8);
+      addP(wx,wy,side*rnd(1,4),rnd(-4,-1),25,255,Math.round(80+rnd(0,120)),0,4+rnd(0,4),-0.02);
     }
   }
 
-  // Suction particles from edges toward center
-  for(var i=0;i<3;i++){
-    var angle=Math.random()*Math.PI*2;
-    var dist=80+Math.random()*60;
-    var px=palm.x+Math.cos(angle)*dist;
-    var py=palm.y+Math.sin(angle)*dist;
-    var dx=palm.x-px, dy=palm.y-py;
-    var len=Math.hypot(dx,dy)||1;
-    addP(px,py,dx/len*4,dy/len*4,15,180,100,255,2+Math.random()*2);
+  // Body fire trail
+  for(var i=0;i<6;i++)addP(bx+rnd(-8,8),by+rnd(0,30),rnd(-1,1),rnd(1,4),30,255,Math.round(rnd(40,150)),0,4+rnd(0,4),0.05);
+
+  // Tail
+  for(var i=0;i<3;i++)addP(bx+rnd(-5,5),by+40+rnd(0,20),rnd(-2,2),rnd(2,5),35,255,Math.round(rnd(100,200)),0,3+rnd(0,3),0.03);
+
+  // Phoenix body glow
+  glow(bx,by,35,255,80,0,0.2);glow(bx,by,20,255,140,20,0.5);glow(bx,by,10,255,220,80,0.8);glow(bx,by,4,255,255,200,1);
+
+  // Eyes (two small bright dots)
+  glow(bx-6,by-5,3,255,255,100,1);glow(bx+6,by-5,3,255,255,100,1);
+
+  // Energy from fingers
+  TIPS.forEach(function(f){var fp=pt(lm,f);X.beginPath();X.moveTo(fp.x,fp.y);X.lineTo(bx,by);X.strokeStyle='rgba(255,100,0,0.15)';X.lineWidth=1.5;X.stroke();glow(fp.x,fp.y,5,255,120,0,0.7)});
+};
+
+// ============== BLACK HOLE ==============
+fx_blackhole=function(lm,pt,W,H){
+  var pm=palm(lm,pt);
+  var bhR=30;
+
+  // Accretion disk
+  for(var ring=0;ring<8;ring++){
+    var r=bhR+12+ring*10;var segs=20+ring*5;var spd=4-ring*0.3;
+    for(var s=0;s<segs;s++){
+      var a=t*spd+s*(Math.PI*2/segs);
+      var x=pm.x+Math.cos(a)*r;var y=pm.y+Math.sin(a)*r*0.35;
+      var sz=1.5+Math.sin(s+t*3)*0.5;
+      var hue=Math.round(20+ring*10)%360;
+      var alpha=(1-ring/8)*0.6;
+      X.beginPath();X.arc(x,y,sz,0,Math.PI*2);X.fillStyle='hsla('+hue+',90%,60%,'+alpha.toFixed(2)+')';X.fill();
+    }
   }
 
-  // Dark center
-  X.beginPath();X.arc(palm.x,palm.y,18,0,Math.PI*2);
-  X.fillStyle='rgba(10,0,20,0.9)';X.fill();
+  // Gravitational lensing ring
+  X.beginPath();X.arc(pm.x,pm.y,bhR+5,0,Math.PI*2);X.strokeStyle='rgba(255,200,100,0.4)';X.lineWidth=3;X.stroke();
+  X.beginPath();X.arc(pm.x,pm.y,bhR+8,0,Math.PI*2);X.strokeStyle='rgba(255,180,80,0.2)';X.lineWidth=2;X.stroke();
 
-  // Center glow
-  X.beginPath();X.arc(palm.x,palm.y,12+3*Math.sin(t*4),0,Math.PI*2);
-  X.fillStyle='rgba(150,50,255,0.6)';X.fill();
-  X.beginPath();X.arc(palm.x,palm.y,5,0,Math.PI*2);
-  X.fillStyle='rgba(255,200,255,0.9)';X.fill();
+  // Sucking particles from everywhere
+  for(var i=0;i<6;i++){
+    var a=rnd(0,Math.PI*2),d=120+rnd(0,80);
+    var sx=pm.x+Math.cos(a)*d,sy=pm.y+Math.sin(a)*d;
+    var dx=pm.x-sx,dy=pm.y-sy,len=Math.hypot(dx,dy)||1;
+    addP(sx,sy,dx/len*5,dy/len*5,20,255,Math.round(rnd(150,220)),Math.round(rnd(50,120)),2+rnd(0,2),0);
+  }
 
-  // Fingertip connectors spiraling into portal
-  TIPS.forEach(function(f){
-    var fp=pt(lm,f);
-    X.beginPath();X.moveTo(fp.x,fp.y);
-    // Curved line to portal
-    var cpx=fp.x+(palm.x-fp.x)*0.5+(Math.sin(t*3)*30);
-    var cpy=fp.y+(palm.y-fp.y)*0.5+(Math.cos(t*3)*30);
-    X.quadraticCurveTo(cpx,cpy,palm.x,palm.y);
-    X.strokeStyle='rgba(180,100,255,0.3)';X.lineWidth=1.5;X.stroke();
+  // Matter jets (top and bottom)
+  for(var i=0;i<3;i++){
+    addP(pm.x+rnd(-5,5),pm.y,rnd(-1,1),-rnd(5,12),20,180,120,255,2+rnd(0,2),0);
+    addP(pm.x+rnd(-5,5),pm.y,rnd(-1,1),rnd(5,12),20,180,120,255,2+rnd(0,2),0);
+  }
 
-    X.beginPath();X.arc(fp.x,fp.y,5,0,Math.PI*2);
-    X.fillStyle='rgba(180,100,255,0.8)';X.fill();
+  // Event horizon (pure black)
+  X.beginPath();X.arc(pm.x,pm.y,bhR,0,Math.PI*2);X.fillStyle='rgba(0,0,0,0.95)';X.fill();
+  // Singularity
+  glow(pm.x,pm.y,5+2*Math.sin(t*5),255,150,50,0.6);
+
+  TIPS.forEach(function(f){var fp=pt(lm,f);glow(fp.x,fp.y,4,255,180,80,0.5)});
+};
+
+// ============== STRANGE ==============
+fx_strange=function(lm,pt){
+  var pm=palm(lm,pt);
+  for(var ring=0;ring<5;ring++){
+    var r=22+ring*24,spd=(3.5-ring*0.5)*(ring%2===0?1:-1),segs=6+ring*2,rot=t*spd;
+    X.beginPath();X.arc(pm.x,pm.y,r,0,Math.PI*2);X.strokeStyle='rgba(255,160,0,'+(0.4-ring*0.07).toFixed(2)+')';X.lineWidth=1.5;X.setLineDash([4+ring*2,4+ring*2]);X.stroke();X.setLineDash([]);
+    for(var s=0;s<segs;s++){var a=rot+s*(Math.PI*2/segs),sx=pm.x+Math.cos(a)*r,sy=pm.y+Math.sin(a)*r;
+      X.beginPath();X.moveTo(sx,sy-(5+ring));X.lineTo(sx+(5+ring),sy);X.lineTo(sx,sy+(5+ring));X.lineTo(sx-(5+ring),sy);X.closePath();X.strokeStyle='rgba(255,180,50,'+(0.6-ring*0.1).toFixed(2)+')';X.lineWidth=1;X.stroke();
+      if(ring<3){var a2=rot+(s+2)*(Math.PI*2/segs);X.beginPath();X.moveTo(sx,sy);X.lineTo(pm.x+Math.cos(a2)*r,pm.y+Math.sin(a2)*r);X.strokeStyle='rgba(255,150,0,'+(0.2-ring*0.04).toFixed(2)+')';X.lineWidth=1;X.stroke()}}}
+  for(var i=0;i<3;i++){var a=rnd(0,Math.PI*2),r=100+rnd(0,15);addP(pm.x+Math.cos(a)*r,pm.y+Math.sin(a)*r,Math.cos(a)*1.5,Math.sin(a)*1.5,16,255,180,50,2,0)}
+  glow(pm.x,pm.y,10+3*Math.sin(t*5),255,200,80,0.7);glow(pm.x,pm.y,4,255,255,200,0.9);
+  TIPS.forEach(function(f,idx){var fp=pt(lm,f);X.beginPath();X.arc(fp.x,fp.y,9,t*3+idx,t*3+idx+4);X.strokeStyle='rgba(255,160,0,0.7)';X.lineWidth=1.5;X.stroke();glow(fp.x,fp.y,3,255,200,80,0.9)});
+};
+
+// ============== MATRIX ==============
+fx_matrix=function(lm,pt,W,H){
+  var chars='01アイウエオカキクケコ日月火水';
+  TIPS.forEach(function(f,idx){
+    var p=pt(lm,f);
+    // Streams of characters falling from each fingertip
+    for(var i=0;i<3;i++){
+      var py=p.y+rnd(0,150);
+      var ch=chars[Math.floor(rnd(0,chars.length))];
+      var alpha=1-(py-p.y)/150;
+      X.font=(10+Math.round(rnd(0,6)))+'px monospace';
+      X.fillStyle='rgba(0,255,70,'+alpha.toFixed(2)+')';
+      X.fillText(ch,p.x+rnd(-8,8),py);
+    }
+    addP(p.x+rnd(-5,5),p.y,rnd(-0.5,0.5),rnd(3,8),30,0,255,70,2,0.1);
+    glow(p.x,p.y,8,0,255,70,0.6);
   });
-}
+
+  // Random matrix rain from palm
+  var pm=palm(lm,pt);
+  for(var i=0;i<4;i++){
+    var x=pm.x+rnd(-40,40);
+    addP(x,pm.y,0,rnd(4,10),40,0,255,Math.round(rnd(50,100)),2+rnd(0,2),0.15);
+  }
+
+  // Skeleton in green
+  SK.forEach(function(s){var a=pt(lm,s[0]),b=pt(lm,s[1]);X.beginPath();X.moveTo(a.x,a.y);X.lineTo(b.x,b.y);X.strokeStyle='rgba(0,200,50,0.3)';X.lineWidth=1;X.stroke()});
+};
+
+// ============== PLASMA ==============
+fx_plasma=function(lm,pt){
+  var pm=palm(lm,pt);var gR=60+8*Math.sin(t*2);
+  X.beginPath();X.arc(pm.x,pm.y,gR,0,Math.PI*2);X.strokeStyle='rgba(180,100,255,0.3)';X.lineWidth=2;X.stroke();
+  X.beginPath();X.arc(pm.x,pm.y,gR,0,Math.PI*2);X.fillStyle='rgba(40,0,60,0.25)';X.fill();
+  TIPS.forEach(function(f,idx){var fp=pt(lm,f),dx=fp.x-pm.x,dy=fp.y-pm.y,d=Math.hypot(dx,dy)||1;
+    var ex=pm.x+(dx/d)*gR,ey=pm.y+(dy/d)*gR;
+    for(var pass=0;pass<2;pass++){X.beginPath();X.moveTo(pm.x,pm.y);for(var s=1;s<=10;s++){var fr=s/10;X.lineTo(pm.x+(ex-pm.x)*fr+rnd(-14,14),pm.y+(ey-pm.y)*fr+rnd(-14,14))}
+      var hue=Math.round((280+idx*30+t*40)%360);X.strokeStyle='hsla('+hue+',100%,70%,'+(pass===0?0.2:0.8)+')';X.lineWidth=pass===0?7:2;X.stroke()}
+    addP(ex+rnd(-6,6),ey+rnd(-6,6),rnd(-2,2),rnd(-2,2),12,200,150,255,2,0)});
+  glow(pm.x,pm.y,12+3*Math.sin(t*5),220,180,255,0.8);glow(pm.x,pm.y,5,255,255,255,1);
+};
+
+// ============== SHIELD ==============
+fx_shield=function(lm,pt){
+  var pm=palm(lm,pt),shR=85+15*Math.sin(t*2),pulse=(Math.sin(t*4)+1)/2;
+  var hexSz=18;
+  for(var gx=-5;gx<=5;gx++)for(var gy=-5;gy<=5;gy++){
+    var hx=pm.x+gx*hexSz*1.5,hy=pm.y+gy*hexSz*1.73+(gx%2)*hexSz*0.866;var d=Math.hypot(hx-pm.x,hy-pm.y);
+    if(d<shR&&d>18){var a=(1-d/shR)*(0.3+0.3*pulse)*(Math.sin(t*8+gx*3+gy*5)>0.3?1:0.4);
+      X.beginPath();for(var h=0;h<6;h++){var ha=Math.PI/3*h;X[h===0?'moveTo':'lineTo'](hx+Math.cos(ha)*hexSz*0.45,hy+Math.sin(ha)*hexSz*0.45)}
+      X.closePath();X.strokeStyle='rgba(0,200,255,'+a.toFixed(2)+')';X.lineWidth=1.5;X.stroke()}}
+  for(var i=0;i<3;i++){X.beginPath();X.arc(pm.x,pm.y,shR+i*6,0,Math.PI*2);X.strokeStyle='rgba(0,180,255,'+(0.3-i*0.1).toFixed(2)+')';X.lineWidth=2;X.stroke()}
+  for(var i=0;i<2;i++){var a=rnd(0,Math.PI*2);addP(pm.x+Math.cos(a)*shR,pm.y+Math.sin(a)*shR,Math.cos(a)*2,Math.sin(a)*2,12,100,220,255,2,0)}
+  TIPS.forEach(function(f){glow(pt(lm,f).x,pt(lm,f).y,5,0,200,255,0.7)});
+};
+
+// ============== FIRE ==============
+fx_fire=function(lm,pt){
+  SK.forEach(function(s){var a=pt(lm,s[0]),b=pt(lm,s[1]);X.beginPath();X.moveTo(a.x,a.y);X.lineTo(b.x,b.y);X.strokeStyle='rgba(255,80,0,0.2)';X.lineWidth=2;X.stroke()});
+  TIPS.forEach(function(f,idx){var p=pt(lm,f);
+    for(var i=0;i<5;i++)addP(p.x+rnd(-7,7),p.y+rnd(-7,7),rnd(-2,2),rnd(-6,-1),28,220+Math.round(rnd(0,35)),Math.round(rnd(40,180)),0,4+rnd(0,4),0);
+    var gr=16+5*Math.sin(t*6+idx);glow(p.x,p.y,gr,255,100,0,0.45);glow(p.x,p.y,gr*0.5,255,200,50,0.7);glow(p.x,p.y,4,255,255,200,1)});
+};
+
+// ============== PORTAL ==============
+fx_portal=function(lm,pt){
+  var pm=palm(lm,pt);
+  for(var ring=0;ring<6;ring++){var r=20+ring*17,segs=12+ring*4,spd=2.5-ring*0.3,dir=ring%2===0?1:-1;
+    for(var s=0;s<segs;s++){var a=dir*t*spd+s*(Math.PI*2/segs);X.beginPath();X.arc(pm.x,pm.y,r,a,a+(Math.PI*2/segs)*0.7);X.strokeStyle='hsla('+Math.round(270+ring*20+t*30)%360+',80%,60%,'+(0.7-ring*0.1).toFixed(2)+')';X.lineWidth=3-ring*0.3;X.stroke()}}
+  for(var i=0;i<4;i++){var a=rnd(0,Math.PI*2),d=95+rnd(0,50);var dx=pm.x+Math.cos(a)*d,dy=pm.y+Math.sin(a)*d;addP(dx,dy,(pm.x-dx)*0.06,(pm.y-dy)*0.06,18,180,100,255,2+rnd(0,2),0)}
+  X.beginPath();X.arc(pm.x,pm.y,18,0,Math.PI*2);X.fillStyle='rgba(10,0,20,0.9)';X.fill();glow(pm.x,pm.y,12+3*Math.sin(t*4),150,50,255,0.6);
+  TIPS.forEach(function(f){var fp=pt(lm,f);X.beginPath();X.moveTo(fp.x,fp.y);X.quadraticCurveTo(fp.x+(pm.x-fp.x)*0.5+Math.sin(t*3)*30,fp.y+(pm.y-fp.y)*0.5+Math.cos(t*3)*30,pm.x,pm.y);X.strokeStyle='rgba(180,100,255,0.3)';X.lineWidth=1.5;X.stroke()});
+};
+
+// ============== ORB ==============
+fx_orb=function(lm,pt){
+  var pm=palm(lm,pt),mid=pt(lm,12),ox=pm.x*0.5+mid.x*0.5,oy=pm.y-65+10*Math.sin(t*2),orbR=32+10*Math.sin(t*3);
+  for(var i=0;i<6;i++){var a=t*3+i*(Math.PI*2/6);addP(ox+Math.cos(a)*(orbR+20),oy+Math.sin(a)*(orbR+20)*0.6,rnd(-1,1),-rnd(1,3),15,100,200,255,2,0)}
+  TIPS.forEach(function(f){var fp=pt(lm,f);X.beginPath();X.moveTo(fp.x,fp.y);X.lineTo(ox,oy);X.strokeStyle='rgba(100,180,255,0.15)';X.lineWidth=1;X.stroke();glow(fp.x,fp.y,5,100,200,255,0.8)});
+  glow(ox,oy,orbR+30,80,180,255,0.04);glow(ox,oy,orbR,120,200,255,0.5);glow(ox,oy,orbR*0.5,200,240,255,0.7);glow(ox,oy,orbR*0.2,255,255,255,0.9);
+};
+
+// ============== WEB ==============
+fx_web=function(lm,pt){
+  var ps=NODES.map(function(i){return pt(lm,i)});
+  for(var i=0;i<ps.length;i++)for(var j=i+1;j<ps.length;j++){var d=dst(ps[i],ps[j]);if(d<300){var a=(1-d/300)*0.95*(0.6+0.4*Math.sin(t*3+i+j));X.beginPath();X.moveTo(ps[i].x,ps[i].y);X.lineTo(ps[j].x,ps[j].y);X.strokeStyle='rgba(0,255,180,'+a.toFixed(2)+')';X.lineWidth=a*3;X.stroke()}}
+  TIPS.forEach(function(f,idx){var p=pt(lm,f),r=10+5*Math.sin(t*4+idx);glow(p.x,p.y,r,0,255,220,1);X.beginPath();X.arc(p.x,p.y,r+14,0,Math.PI*2);X.strokeStyle='rgba(0,255,200,0.4)';X.lineWidth=2;X.stroke()});
+};
+
+// ============== CYBER ==============
+fx_cyber=function(lm,pt){
+  SK.forEach(function(s){var a=pt(lm,s[0]),b=pt(lm,s[1]);X.beginPath();X.moveTo(a.x,a.y);X.lineTo(b.x,b.y);X.strokeStyle='rgba(160,80,255,0.7)';X.lineWidth=2;X.stroke()});
+  TIPS.forEach(function(f,idx){var p=pt(lm,f);glow(p.x,p.y,8,255,50,210,1);var sz=20+4*Math.sin(t*5+idx);X.beginPath();X.moveTo(p.x-sz,p.y);X.lineTo(p.x+sz,p.y);X.moveTo(p.x,p.y-sz);X.lineTo(p.x,p.y+sz);X.strokeStyle='rgba(255,50,210,0.8)';X.lineWidth=2;X.stroke()});
+};
+
+// ============== PULSE ==============
+fx_pulse=function(lm,pt){
+  var ps=NODES.map(function(i){return pt(lm,i)}),b=(Math.sin(t*5)+1)/2;
+  for(var i=0;i<ps.length;i++)for(var j=i+1;j<ps.length;j++){var d=dst(ps[i],ps[j]);if(d<260){var a=(1-d/260)*0.9;X.beginPath();X.moveTo(ps[i].x,ps[i].y);X.lineTo(ps[j].x,ps[j].y);X.strokeStyle='rgba('+Math.round(255*b)+','+Math.round(80+170*(1-b))+',255,'+a.toFixed(2)+')';X.lineWidth=a*3;X.stroke()}}
+  TIPS.forEach(function(f,idx){var p=pt(lm,f),hue=Math.round((t*50+idx*72)%360),r2=12+8*b;glow(p.x,p.y,r2,0,0,0,0);X.beginPath();X.arc(p.x,p.y,r2,0,Math.PI*2);X.fillStyle='hsla('+hue+',100%,65%,1)';X.fill()});
+};
 </script>
 </body>
 </html>
